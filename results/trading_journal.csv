@@ -1,0 +1,2 @@
+Date,Time,Action,Price,Quantity,Signal_Score,RSI,Reason,Stop_Loss,Target,Status,PnL
+2025-09-12,17:54:31,BUY,3133.85,10,2.0,37.0,Strong BUY signal at market close,3120.0,3150.0,OPEN,0
