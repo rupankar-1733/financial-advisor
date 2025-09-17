@@ -340,7 +340,7 @@ class CompleteFinancialAI:
         # Live trading with urgency
         elif any(phrase in clean_message for phrase in [
             'market closes', 'live trading', '10 mins', 'overnight strategy', 'slow', 'internet'
-        ]):
+        ]) or (len(stocks) >= 3 and any(word in clean_message for word in ['swing', 'trading', 'analyz'])):
             intent = 'urgent_trading_analysis'
         
         # Advanced analysis with everything
@@ -375,10 +375,8 @@ class CompleteFinancialAI:
         market_open, market_status = self.check_market_status()
         
         try:
-            if analysis['intent'] == 'multi_stock_swing_analysis':
-                return self.generate_multi_stock_swing_analysis(analysis['stocks'], working_capital, market_status)
-            
-            elif analysis['intent'] == 'crisis_management':
+
+            if analysis['intent'] == 'crisis_management':
                 return self.generate_crisis_management_response(working_capital, market_status)
             
             elif analysis['intent'] == 'ultimate_recommendations':
