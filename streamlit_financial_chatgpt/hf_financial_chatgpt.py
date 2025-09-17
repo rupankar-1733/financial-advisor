@@ -148,6 +148,158 @@ class CompleteFinancialAI:
             now = datetime.now()
             return True, f"🟢 Analysis Time - {now.strftime('%I:%M %p IST')}"
     
+    def detect_and_analyze_any_stock(self, user_message):
+        """Universal method that finds ANY stock mentioned and analyzes it"""
+        
+        # Step 1: Extract potential stock names from user message
+        import re
+        words = re.findall(r'\b[A-Za-z]+\b', user_message)
+        
+        # Step 2: Test each word to see if it's a valid stock
+        valid_stocks = []
+        
+        for word in words:
+            if len(word) >= 3:  # Stock symbols are usually 3+ characters
+                # Try multiple formats
+                potential_symbols = [
+                    f"{word.upper()}.NS",           # IREDA.NS
+                    f"{word.upper()}.BO",           # Some stocks use .BO
+                    f"{word.upper()}"               # Just the symbol
+                ]
+                
+                for symbol in potential_symbols:
+                    if self.validate_stock_exists(symbol):
+                        valid_stocks.append(symbol)
+                        break  # Found valid format, move to next word
+        
+        # Step 3: Analyze the first valid stock found
+        if valid_stocks:
+            return self.analyze_stock_universally(valid_stocks[0], user_message)
+        else:
+            return self.handle_no_stock_found(user_message)
+
+    def validate_stock_exists(self, symbol):
+        """Check if stock symbol exists by trying to fetch data"""
+        try:
+            import yfinance as yf
+            ticker = yf.Ticker(symbol)
+            # Try to get just 1 day of data quickly
+            data = ticker.history(period='1d')
+            return not data.empty and len(data) > 0
+        except:
+            return False
+
+    def analyze_stock_universally(self, stock_symbol, original_message):
+        """Analyze ANY valid stock with position detection"""
+        
+        response = f"## 📊 {stock_symbol.replace('.NS', '').upper()} Analysis\n\n"
+        
+        try:
+            # Get live data
+            import yfinance as yf
+            ticker = yf.Ticker(stock_symbol)
+            data = ticker.history(period='10d')
+            
+            if data.empty:
+                return f"❌ Unable to fetch data for {stock_symbol}"
+            
+            current_price = data['Close'].iloc[-1]
+            prev_price = data['Close'].iloc[-5] if len(data) >= 5 else data['Close'].iloc[0]
+            momentum = ((current_price - prev_price) / prev_price) * 100
+            
+            response += f"**Current Price**: ₹{current_price:.2f}\n"
+            response += f"**5-Day Change**: {momentum:+.2f}%\n"
+            response += f"**Volume**: {data['Volume'].iloc[-1]:,.0f}\n\n"
+            
+            # Check if user mentioned position details
+            position_info = self.extract_position_from_message(original_message)
+            
+            if position_info:
+                shares = position_info['shares']
+                entry_price = position_info['entry_price']
+                
+                current_value = shares * current_price
+                invested_value = shares * entry_price
+                pnl = current_value - invested_value
+                pnl_pct = (pnl / invested_value) * 100
+                
+                response += f"### 💰 Your Position\n\n"
+                response += f"**Shares Held**: {shares}\n"
+                response += f"**Entry Price**: ₹{entry_price}\n"
+                response += f"**Current Value**: ₹{current_value:,.0f}\n"
+                response += f"**P&L**: ₹{pnl:+,.0f} ({pnl_pct:+.2f}%)\n\n"
+                
+                # Smart recommendation based on P&L
+                if pnl_pct > 20:
+                    response += f"**🟢 RECOMMENDATION**: Excellent gains! Consider booking 50% profits.\n"
+                elif pnl_pct > 10:
+                    response += f"**🟡 RECOMMENDATION**: Good gains. Hold with trailing stop loss.\n"
+                elif pnl_pct < -15:
+                    response += f"**🔴 RECOMMENDATION**: Significant loss. Review fundamentals or cut loss.\n"
+                else:
+                    response += f"**🟡 RECOMMENDATION**: Minor movement. Hold with stop loss at ₹{entry_price * 0.92:.2f}\n"
+            
+            else:
+                # New investment advice
+                response += f"### 🎯 Investment Analysis\n\n"
+                
+                # Technical levels
+                support = current_price * 0.95
+                resistance = current_price * 1.08
+                
+                response += f"**Support Level**: ₹{support:.2f}\n"
+                response += f"**Resistance Level**: ₹{resistance:.2f}\n"
+                
+                if momentum > 3:
+                    response += f"**🟢 SIGNAL**: Strong uptrend (+{momentum:.1f}%)\n"
+                    response += f"**ACTION**: Consider buying on dips near ₹{support:.2f}\n"
+                elif momentum < -3:
+                    response += f"**🔴 SIGNAL**: Downtrend ({momentum:.1f}%)\n" 
+                    response += f"**ACTION**: Wait for reversal or avoid\n"
+                else:
+                    response += f"**🟡 SIGNAL**: Sideways movement\n"
+                    response += f"**ACTION**: Wait for clear breakout above ₹{resistance:.2f}\n"
+        
+        except Exception as e:
+            response += f"⚠️ Analysis error: {str(e)}\n"
+        
+        return response
+
+    def extract_position_from_message(self, message):
+        """Extract shares and entry price from user message"""
+        import re
+        
+        # Look for patterns like "32 shares at 159" or "bought 50 at 1200"
+        patterns = [
+            r'(\d+)\s+shares?\s+(?:at|@)\s+(\d+(?:\.\d+)?)',      # "32 shares at 159"
+            r'bought\s+(\d+)\s+(?:at|@)\s+(\d+(?:\.\d+)?)',       # "bought 50 at 1200"  
+            r'holding\s+(\d+)\s+(?:at|@)\s+(\d+(?:\.\d+)?)',      # "holding 25 at 850"
+            r'(\d+)\s+(?:shares?).*?(\d+(?:\.\d+)?)',             # "32 shares... 159"
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, message.lower())
+            if match:
+                shares = int(match.group(1))
+                entry_price = float(match.group(2))
+                return {'shares': shares, 'entry_price': entry_price}
+        
+        return None
+
+    def handle_no_stock_found(self, message):
+        """Handle when no valid stock is detected"""
+        return f"""❌ **No Valid Stock Detected**
+
+        I couldn't find a recognizable stock symbol in your message.
+
+**Examples of what works:**
+- "Analyze IREDA"
+- "Show me TCS data" 
+- "I bought 50 shares of TATASTEEL at 160"
+- "What should I do with my RELIANCE position?"
+
+**Tip**: Use the stock's trading symbol (like IREDA, ZOMATO, PAYTM, etc.)"""
+    
     def extract_capital_from_query(self, message):
         """FIXED: Extract capital amount from user query"""
         # Handle various formats
@@ -297,12 +449,25 @@ class CompleteFinancialAI:
         # Extract specific stocks mentioned
         stocks = []
         stock_patterns = {
-            'tcs': 'TCS.NS', 'infosys': 'INFY.NS', 'infy': 'INFY.NS',
-            'reliance': 'RELIANCE.NS', 'ril': 'RELIANCE.NS', 'relianc': 'RELIANCE.NS',
-            'hdfc': 'HDFCBANK.NS', 'hdfcbank': 'HDFCBANK.NS',
-            'sbi': 'SBIN.NS', 'icici': 'ICICIBANK.NS', 'axis': 'AXISBANK.NS',
-            'itc': 'ITC.NS', 'wipro': 'WIPRO.NS'
+        # Existing patterns
+        'tcs': 'TCS.NS', 'infosys': 'INFY.NS', 'infy': 'INFY.NS',
+        'reliance': 'RELIANCE.NS', 'ril': 'RELIANCE.NS',
+        'hdfc': 'HDFCBANK.NS', 'sbi': 'SBIN.NS',
+        'itc': 'ITC.NS', 'wipro': 'WIPRO.NS',
+    
+        # ADD THESE NEW PATTERNS:
+        'tatasteel': 'TATASTEEL.NS', 'tata steel': 'TATASTEEL.NS',
+        'jswsteel': 'JSWSTEEL.NS', 'jsw steel': 'JSWSTEEL.NS',
+        'hindalco': 'HINDALCO.NS', 'jindal': 'JINDALSTEL.NS',
+        'vedanta': 'VEDL.NS', 'sail': 'SAIL.NS', 'nmdc': 'NMDC.NS',
+        'coalindia': 'COALINDIA.NS', 'ongc': 'ONGC.NS',
+        'bhartiartl': 'BHARTIARTL.NS', 'airtel': 'BHARTIARTL.NS',
+        'asianpaint': 'ASIANPAINT.NS', 'asian paint': 'ASIANPAINT.NS',
+        'ultratech': 'ULTRACEMCO.NS', 'ultracem': 'ULTRACEMCO.NS',
+        'sunpharma': 'SUNPHARMA.NS', 'cipla': 'CIPLA.NS',
+        'drreddy': 'DRREDDY.NS', 'powergrid': 'POWERGRID.NS'
         }
+        
         
         for pattern, symbol in stock_patterns.items():
             if pattern in clean_message:
@@ -350,6 +515,18 @@ class CompleteFinancialAI:
             'sector rotation', 'rotating out', 'rotating in', 'sector shifts'
         ]):
             intent = 'sector_rotation_analysis'
+        # PORTFOLIO/POSITION analysis
+        elif any(phrase in clean_message for phrase in [
+            'bought', 'holding', 'shares of', 'position in', 'invested in',
+            'show me data', 'analyze my', 'what should i do'
+        ]) or (stocks and any(word in clean_message for word in ['bought', 'shares', 'holding'])):
+            intent = 'individual_stock_analysis'
+
+        # DATA request for specific stocks
+        elif any(phrase in clean_message for phrase in [
+        'show me data', 'data of', 'price of', 'analyze'
+]       ) and stocks:
+            intent = 'individual_stock_analysis'
 
         # Debug output
         print(f"DEBUG: Final intent = {intent} for message: {clean_message[:50]}...")
@@ -364,50 +541,35 @@ class CompleteFinancialAI:
 
 
     def generate_structured_response(self, user_message):
-        """COMPLETE response generation system with ALL methods"""
-        analysis = self.analyze_user_query(user_message)
-        context = st.session_state.get('user_context', {})
-        
-        # Use extracted capital if available, otherwise sidebar
-        if analysis['extracted_capital']:
-            working_capital = analysis['extracted_capital']
-        else:
-            working_capital = context.get('capital', 50000)
-        
-        # Update context with extracted capital
-        context['working_capital'] = working_capital
-        
+        """SIMPLIFIED: Universal response handler"""
+    
         # Check market status
         market_open, market_status = self.check_market_status()
-        
-        try:
+    
+        # Try to find and analyze any stock mentioned
+        stock_analysis = self.detect_and_analyze_any_stock(user_message)
+    
+        # If stock found and analyzed, return that
+        if "No Valid Stock Detected" not in stock_analysis:
+            return stock_analysis
+    
+        # Otherwise, handle as general investment query
+        context = st.session_state.get('user_context', {})
+        working_capital = context.get('capital', 50000)
+    
+        # Check for specific intents
+        message_lower = user_message.lower()
 
-            if analysis['intent'] == 'crisis_management':
-                return self.generate_crisis_management_response(working_capital, market_status)
-            
-            elif analysis['intent'] == 'ultimate_recommendations':
-                return self.generate_detailed_ultimate_recommendations(working_capital, context, market_status)
-            
-            elif analysis['intent'] == 'advanced_options_strategy':
-                return self.generate_advanced_options_strategy(analysis['stocks'], working_capital, market_status)
-            
-            elif analysis['intent'] == 'sector_rotation_analysis':
-                return self.generate_sector_rotation_analysis(working_capital, market_status)
-            
-            elif analysis['intent'] == 'urgent_trading_analysis':
-                return self.generate_urgent_trading_analysis(analysis['stocks'], working_capital, market_status)
-            
-            elif analysis['intent'] == 'nuclear_analysis':
-                return self.generate_nuclear_analysis(working_capital, market_status)
-            
-            else:
-                return self.generate_general_guidance()
-                
-        except Exception as e:
-            error_response = f"⚠️ **Processing Error Handled Gracefully**: {str(e)}\n\n"
-            error_response += f"**Fallback Analysis for ₹{working_capital:,} Capital:**\n\n"
-            error_response += self.generate_fallback_analysis(working_capital, market_status)
-            return error_response
+        if any(word in message_lower for word in ['crisis', 'crashing', 'bleeding', 'urgent']):
+            return self.generate_crisis_management_response(working_capital, market_status)
+    
+        elif any(word in message_lower for word in ['ultimate', 'recommend', 'invest', 'best stocks']):
+            return self.generate_detailed_ultimate_recommendations(working_capital, context, market_status)
+
+        else:
+            return self.generate_general_guidance()
+
+
     
     def generate_crisis_management_response(self, capital, market_status):
         """Crisis management for portfolio bleeding scenarios"""
@@ -1197,6 +1359,121 @@ class CompleteFinancialAI:
         
         return response
     
+
+    def generate_individual_stock_analysis(self, stock_symbol, entry_price=None, shares=None, market_status=""):
+        """Universal individual stock analysis for ANY stock"""
+        response = f"## 📊 Complete Analysis: {stock_symbol.upper()}\n\n"
+        response += f"**{market_status}**\n\n"
+    
+        # Convert to Yahoo Finance format
+        if not stock_symbol.endswith('.NS'):
+            yf_symbol = f"{stock_symbol.upper()}.NS"
+        else:
+            yf_symbol = stock_symbol.upper()
+    
+        try:
+            # Get live data for ANY stock
+            stock_data = self.get_live_stock_data_batch([yf_symbol])
+        
+            if yf_symbol in stock_data and stock_data[yf_symbol]['valid']:
+                data = stock_data[yf_symbol]
+                current_price = data['current_price']
+                momentum = data['momentum']
+            
+                response += f"### 📈 Current Market Data\n\n"
+                response += f"**Current Price**: ₹{current_price:.2f}\n"
+                response += f"**5-Day Momentum**: {momentum:+.2f}%\n"
+                response += f"**Volume Trend**: {'Higher' if data.get('volume_ratio', 1) > 1.2 else 'Normal' if data.get('volume_ratio', 1) > 0.8 else 'Lower'} than average\n\n"
+            
+                # If user has existing position
+                if entry_price and shares:
+                    response += f"### 💰 Your Position Analysis\n\n"
+                    total_cost = entry_price * shares
+                    current_value = current_price * shares
+                    pnl = current_value - total_cost
+                    pnl_pct = (pnl / total_cost) * 100
+                
+                    response += f"**Position Details:**\n"
+                    response += f"- Shares Held: {shares}\n"
+                    response += f"- Entry Price: ₹{entry_price:.2f}\n"
+                    response += f"- Current Price: ₹{current_price:.2f}\n"
+                    response += f"- Total Cost: ₹{total_cost:,.0f}\n"
+                    response += f"- Current Value: ₹{current_value:,.0f}\n\n"
+                
+                    pnl_emoji = "🟢" if pnl > 0 else "🔴" if pnl < 0 else "🟡"
+                    response += f"**P&L Analysis:** {pnl_emoji}\n"
+                    response += f"- Unrealized P&L: ₹{pnl:+,.0f} ({pnl_pct:+.2f}%)\n"
+                    response += f"- Per Share: ₹{(current_price - entry_price):+.2f}\n\n"
+            
+                # Technical Analysis
+                response += f"### 🎯 Technical Analysis\n\n"
+            
+                # Calculate support and resistance
+                support_price = current_price * 0.95
+                resistance_price = current_price * 1.08
+            
+                response += f"**Key Levels:**\n"
+                response += f"- Support: ₹{support_price:.2f} (5% below current)\n"
+                response += f"- Resistance: ₹{resistance_price:.2f} (8% above current)\n"
+                response += f"- Trend: {'🟢 Bullish' if momentum > 2 else '🔴 Bearish' if momentum < -2 else '🟡 Neutral'}\n\n"
+            
+                # Action recommendations
+                response += f"### 🎯 Action Recommendations\n\n"
+            
+                if entry_price and shares:
+                    # Existing position advice
+                    if pnl_pct > 15:
+                        response += f"**🟢 BOOK PROFITS**: Excellent gains of {pnl_pct:+.1f}%\n"
+                        response += f"- Sell 50% at current levels\n"
+                        response += f"- Trail stop loss at ₹{current_price * 0.95:.2f}\n"
+                    elif pnl_pct > 5:
+                        response += f"**🟡 HOLD**: Decent gains of {pnl_pct:+.1f}%\n"
+                        response += f"- Set stop loss at ₹{entry_price * 0.98:.2f}\n"
+                        response += f"- Target: ₹{resistance_price:.2f}\n"
+                    elif pnl_pct < -10:
+                        response += f"**🔴 REVIEW POSITION**: Loss of {pnl_pct:+.1f}%\n"
+                        response += f"- Consider reducing position if breaks ₹{support_price:.2f}\n"
+                        response += f"- Or average down if fundamentally strong\n"
+                    else:
+                        response += f"**🟡 MONITOR**: Minor movement of {pnl_pct:+.1f}%\n"
+                        response += f"- Hold with stop loss at ₹{entry_price * 0.92:.2f}\n"
+                else:
+                    # New position advice
+                    if momentum > 2:
+                        response += f"**🟢 BUY**: Strong momentum (+{momentum:.1f}%)\n"
+                        response += f"- Entry: Around ₹{current_price * 0.98:.2f}\n"
+                        response += f"- Target: ₹{resistance_price:.2f}\n"
+                        response += f"- Stop Loss: ₹{support_price:.2f}\n"
+                    elif momentum < -2:
+                        response += f"**🔴 AVOID**: Negative momentum ({momentum:.1f}%)\n"
+                        response += f"- Wait for reversal signals\n"
+                        response += f"- Consider if breaks below ₹{support_price:.2f}\n"
+                    else:
+                        response += f"**🟡 WAIT**: Neutral momentum ({momentum:.1f}%)\n"
+                        response += f"- Watch for breakout above ₹{resistance_price:.2f}\n"
+                        response += f"- Or buy on dip near ₹{support_price:.2f}\n"
+                    
+            else:
+                # Fallback if data not available
+                response += f"⚠️ **Live data temporarily unavailable for {stock_symbol.upper()}**\n\n"
+                response += f"**General Analysis Available:**\n"
+                response += f"- Stock appears to be from metals/steel sector\n"
+                response += f"- Cyclical stock - depends on economic conditions\n"
+                response += f"- Monitor commodity prices and infrastructure demand\n\n"
+            
+                if entry_price and shares:
+                    response += f"**Your Position:**\n"
+                    response += f"- Entry: ₹{entry_price} × {shares} shares = ₹{entry_price * shares:,.0f}\n"
+                    response += f"- Suggested stop loss: ₹{entry_price * 0.92:.2f}\n"
+                    response += f"- Target: ₹{entry_price * 1.15:.2f}\n"
+    
+        except Exception as e:
+            response += f"⚠️ **Analysis Error**: {str(e)}\n"
+            response += f"Please check the stock symbol and try again.\n"
+    
+        return response
+
+
     def generate_sector_rotation_analysis(self, capital, market_status):
         """Sector rotation analysis implementation"""
         response = f"## 🔄 Complete Sector Rotation Analysis (₹{capital:,})\n\n"
