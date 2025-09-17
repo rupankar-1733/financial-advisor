@@ -1,9 +1,54 @@
-# Python environment
-fincvenv/
-
-# Byte-compiled files
+# .gitignore - What NOT to push to GitHub
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Jupyter Notebook checkpoints
-.ipynb_checkpoints/
+# Virtual environments
+venv/
+fincvenv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data files (too large for git)
+*.csv
+*.xlsx
+*.json
+data/*.csv
+data/*.json
+
+# API keys and secrets
+.env
+*.env
+secrets.toml
+
+# Temporary files
+*.log
+*.tmp
+temp/
