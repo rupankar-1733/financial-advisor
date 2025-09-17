@@ -541,34 +541,84 @@ class CompleteFinancialAI:
 
 
     def generate_structured_response(self, user_message):
-        """SIMPLIFIED: Universal response handler"""
+        """IMPROVED: Universal response handler with better intent detection"""
     
         # Check market status
         market_open, market_status = self.check_market_status()
     
-        # Try to find and analyze any stock mentioned
-        stock_analysis = self.detect_and_analyze_any_stock(user_message)
+        # IMPROVED: Check for general investment queries FIRST
+        message_lower = user_message.lower()
+            
+        # If it's clearly a general investment query, don't look for stocks
+        general_investment_phrases = [
+            'i have capital', 'capital of', 'what to buy', 'where to invest',
+            'suggest me', 'recommend me', 'best investment', 'how to invest'
+        ]
     
-        # If stock found and analyzed, return that
-        if "No Valid Stock Detected" not in stock_analysis:
-            return stock_analysis
+        is_general_query = any(phrase in message_lower for phrase in general_investment_phrases)
     
-        # Otherwise, handle as general investment query
+        # If it's NOT a general query, try to find stocks
+        if not is_general_query:
+            stock_analysis = self.detect_and_analyze_any_stock(user_message)
+        
+            # If stock found and analyzed, return that
+            if "No Valid Stock Detected" not in stock_analysis:
+                return stock_analysis
+    
+        # Handle as general investment query
         context = st.session_state.get('user_context', {})
         working_capital = context.get('capital', 50000)
     
-        # Check for specific intents
-        message_lower = user_message.lower()
-
+        # Extract capital from message if mentioned
+        extracted_capital = self.extract_capital_from_query(user_message)
+        if extracted_capital:
+            working_capital = extracted_capital
+    
+        # Route to appropriate method
         if any(word in message_lower for word in ['crisis', 'crashing', 'bleeding', 'urgent']):
             return self.generate_crisis_management_response(working_capital, market_status)
     
-        elif any(word in message_lower for word in ['ultimate', 'recommend', 'invest', 'best stocks']):
+        elif any(word in message_lower for word in ['ultimate', 'comprehensive', 'complete']):
             return self.generate_detailed_ultimate_recommendations(working_capital, context, market_status)
-
+    
         else:
-            return self.generate_general_guidance()
+            # Generate simple investment recommendations for general queries
+            return self.generate_simple_investment_advice(working_capital, message_lower, market_status)
 
+
+    def generate_simple_investment_advice(self, capital, message, market_status):
+        """Simple investment advice for small capital"""
+    
+        response = f"## 💰 Investment Strategy for ₹{capital:,}\n\n"
+        response += f"**{market_status}**\n\n"
+    
+        if capital <= 25000:
+            response += f"### 🎯 Small Capital Strategy (₹{capital:,})\n\n"
+            response += f"**Recommended Approach:**\n"
+            response += f"- **SIP in Mutual Funds**: ₹{capital//2:,} (50%)\n"
+            response += f"- **Direct Stock Investment**: ₹{capital//3:,} (33%)\n"
+            response += f"- **Emergency Cash**: ₹{capital - (capital//2) - (capital//3):,} (17%)\n\n"
+        
+            response += f"**Best Stocks for Small Capital:**\n"
+            response += f"1. **ITC** (₹400-450) - Stable, dividend paying\n"
+            response += f"2. **TATASTEEL** (₹150-180) - Cyclical recovery\n"
+            response += f"3. **SBIN** (₹800-900) - Banking sector play\n\n"
+        
+            if 'month' in message:
+                response += f"**⚠️ One Month Strategy:**\n"
+                response += f"- Avoid equity for 1-month horizon\n"
+                response += f"- Consider liquid funds or FDs\n"
+                response += f"- Expected return: 0.5-1% per month\n"
+    
+            else:
+                response += f"### 📈 Medium Capital Strategy (₹{capital:,})\n\n"
+                response += f"**Diversified Portfolio:**\n"
+                response += f"- **Large Cap Stocks**: ₹{capital*0.4:,.0f} (40%)\n"
+                response += f"- **Mid Cap Stocks**: ₹{capital*0.3:,.0f} (30%)\n"
+                response += f"- **Mutual Funds**: ₹{capital*0.2:,.0f} (20%)\n"
+                response += f"- **Cash Reserve**: ₹{capital*0.1:,.0f} (10%)\n"
+    
+        return response
 
     
     def generate_crisis_management_response(self, capital, market_status):
