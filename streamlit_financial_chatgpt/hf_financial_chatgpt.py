@@ -311,52 +311,58 @@ class CompleteFinancialAI:
         # Enhanced intent detection
         intent = 'general'
         
-        # Multi-stock analysis for swing trading
-        if len(stocks) >= 3 and any(word in clean_message for word in ['swing', 'trading', 'analyz']):
-            intent = 'multi_stock_swing_analysis'
-        
-        # Crisis/urgent scenarios
+        # 1. OPTIONS/DERIVATIVES - CHECK FIRST (highest priority)
+        if any(phrase in clean_message for phrase in [
+        'options', 'covered calls', 'protective puts', 'iron condor', 'derivatives',
+        'theta decay', 'delta hedging', 'volatility impact', 'monthly income projections',
+        'advanced options', 'options trading strategy', 'options strategy'
+        ]):
+            intent = 'advanced_options_strategy'
+            print(f"DEBUG: Options intent detected for: {clean_message}")
+            
+            intent = 'advanced_options_strategy'
+
+        # 2. CRISIS/URGENT scenarios
         elif any(word in clean_message for word in ['urgent', 'crashing', 'bleeding', 'damage control']):
             intent = 'crisis_management'
-        
-        # Ultimate/comprehensive analysis
+
+        # 3. MULTI-STOCK ANALYSIS with specific patterns
+        elif (len(stocks) >= 3 or any(phrase in clean_message for phrase in [
+            'hdfc sbi tcs', 'analyze hdfc', 'multi stock', 'swing trading'
+        ])) and any(word in clean_message for word in ['analyz', 'trading', 'swing']):
+            intent = 'urgent_trading_analysis'
+
+        # 4. NUCLEAR/COMPREHENSIVE analysis
+        elif any(phrase in clean_message for phrase in [
+        'run every', 'advanced analysis', 'comprehensive trading plan', 'nuclear',
+        'market overview', 'comprehensive analysis'
+        ]):
+            intent = 'nuclear_analysis'
+
+        # 5. ULTIMATE/SECTOR analysis
         elif any(phrase in clean_message for phrase in [
             'ultimate', 'comprehensive', 'complete', 'sector analysis', 'market breadth'
         ]):
-            intent = 'ultimate_recommendations'
-        
-        # Options/derivatives
-        elif any(phrase in clean_message for phrase in [
-            'options', 'covered calls', 'protective puts', 'iron condors', 'derivatives'
-        ]):
-            intent = 'advanced_options_strategy'
-        
-        # Sector rotation analysis
+            intent = 'ultimate_recommendations'    
+
+        # 6. SECTOR ROTATION
         elif any(phrase in clean_message for phrase in [
             'sector rotation', 'rotating out', 'rotating in', 'sector shifts'
         ]):
             intent = 'sector_rotation_analysis'
-        
-        # Live trading with urgency
-        elif any(phrase in clean_message for phrase in [
-            'market closes', 'live trading', '10 mins', 'overnight strategy', 'slow', 'internet'
-        ]) or (len(stocks) >= 3 and any(word in clean_message for word in ['swing', 'trading', 'analyz'])):
-            intent = 'urgent_trading_analysis'
-        
-        # Advanced analysis with everything
-        elif any(phrase in clean_message for phrase in [
-            'run every', 'advanced analysis', 'comprehensive trading plan'
-        ]):
-            intent = 'nuclear_analysis'
-        
+
+        # Debug output
+        print(f"DEBUG: Final intent = {intent} for message: {clean_message[:50]}...")
+
         return {
-            'intent': intent,
-            'stocks': list(set(stocks)),  # Remove duplicates
-            'extracted_capital': extracted_capital,
-            'message': clean_message,
-            'original': message
+        'intent': intent,
+        'stocks': list(set(stocks)),  # Remove duplicates
+        'extracted_capital': extracted_capital,
+        'message': clean_message,
+        'original': message
         }
-    
+
+
     def generate_structured_response(self, user_message):
         """COMPLETE response generation system with ALL methods"""
         analysis = self.analyze_user_query(user_message)
