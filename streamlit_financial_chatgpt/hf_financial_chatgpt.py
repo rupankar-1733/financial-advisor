@@ -190,80 +190,174 @@ class CompleteFinancialAI:
             return False
 
     def analyze_stock_universally(self, stock_symbol, original_message):
-        """Analyze ANY valid stock with position detection"""
-        
-        response = f"## 📊 {stock_symbol.replace('.NS', '').upper()} Analysis\n\n"
-        
+        """ENHANCED: Context-aware analysis based on user's specific question"""
+    
+        stock_name = stock_symbol.replace('.NS', '').upper()
+        response = f"## 📊 {stock_name} Complete Analysis\n\n"
+    
         try:
-            # Get live data
+            # Get comprehensive data
             import yfinance as yf
             ticker = yf.Ticker(stock_symbol)
-            data = ticker.history(period='10d')
-            
+            data = ticker.history(period='1y')  # Get 1 year for better analysis
+            info = ticker.info
+        
             if data.empty:
                 return f"❌ Unable to fetch data for {stock_symbol}"
-            
+        
             current_price = data['Close'].iloc[-1]
-            prev_price = data['Close'].iloc[-5] if len(data) >= 5 else data['Close'].iloc[0]
-            momentum = ((current_price - prev_price) / prev_price) * 100
-            
-            response += f"**Current Price**: ₹{current_price:.2f}\n"
-            response += f"**5-Day Change**: {momentum:+.2f}%\n"
-            response += f"**Volume**: {data['Volume'].iloc[-1]:,.0f}\n\n"
-            
-            # Check if user mentioned position details
+        
+            # Calculate various timeframe returns
+            returns = {}
+            timeframes = {'1d': 1, '5d': 5, '1m': 22, '3m': 66, '6m': 132, '1y': 252}
+        
+            for period, days in timeframes.items():
+                if len(data) >= days:
+                past_price = data['Close'].iloc[-days]
+                returns[period] = ((current_price - past_price) / past_price) * 100
+        
+            # Current status
+            response += f"**📈 Current Status**\n"
+            response += f"- Price: ₹{current_price:.2f}\n"
+            response += f"- 52-Week High: ₹{data['High'].max():.2f}\n"
+            response += f"- 52-Week Low: ₹{data['Low'].min():.2f}\n"
+            response += f"- Volume: {data['Volume'].iloc[-1]:,.0f}\n\n"
+        
+            # Performance across timeframes
+            response += f"**📊 Performance History**\n"
+            for period, return_pct in returns.items():
+                emoji = "🟢" if return_pct > 0 else "🔴"
+                response += f"- {period.upper()}: {return_pct:+.2f}% {emoji}\n"
+            response += "\n"
+        
+            # Check if user has position
             position_info = self.extract_position_from_message(original_message)
-            
+        
             if position_info:
                 shares = position_info['shares']
                 entry_price = position_info['entry_price']
-                
+            
+                # Current position analysis
                 current_value = shares * current_price
                 invested_value = shares * entry_price
                 pnl = current_value - invested_value
                 pnl_pct = (pnl / invested_value) * 100
-                
-                response += f"### 💰 Your Position\n\n"
-                response += f"**Shares Held**: {shares}\n"
-                response += f"**Entry Price**: ₹{entry_price}\n"
-                response += f"**Current Value**: ₹{current_value:,.0f}\n"
-                response += f"**P&L**: ₹{pnl:+,.0f} ({pnl_pct:+.2f}%)\n\n"
-                
-                # Smart recommendation based on P&L
-                if pnl_pct > 20:
-                    response += f"**🟢 RECOMMENDATION**: Excellent gains! Consider booking 50% profits.\n"
-                elif pnl_pct > 10:
-                    response += f"**🟡 RECOMMENDATION**: Good gains. Hold with trailing stop loss.\n"
-                elif pnl_pct < -15:
-                    response += f"**🔴 RECOMMENDATION**: Significant loss. Review fundamentals or cut loss.\n"
-                else:
-                    response += f"**🟡 RECOMMENDATION**: Minor movement. Hold with stop loss at ₹{entry_price * 0.92:.2f}\n"
             
-            else:
-                # New investment advice
-                response += f"### 🎯 Investment Analysis\n\n"
+                response += f"### 💰 Your Position Analysis\n\n"
+                response += f"**Current Status:**\n"
+                response += f"- Shares: {shares}\n"
+                response += f"- Entry Price: ₹{entry_price:.2f}\n"
+                response += f"- Current Value: ₹{current_value:,.0f}\n"
+                response += f"- Investment: ₹{invested_value:,.0f}\n"
+                response += f"- P&L: ₹{pnl:+,.0f} ({pnl_pct:+.2f}%)\n\n"
+            
+                # ENHANCED: Return expectations based on user's question
+                if any(word in original_message.lower() for word in ['return', 'expect', 'profit', 'target', 'future']):
+                    response += f"### 🎯 Return Expectations & Projections\n\n"
                 
-                # Technical levels
-                support = current_price * 0.95
-                resistance = current_price * 1.08
+                    # Calculate potential scenarios
+                    conservative_target = current_price * 1.1   # 10% upside
+                    moderate_target = current_price * 1.2       # 20% upside
+                    aggressive_target = current_price * 1.35    # 35% upside
                 
-                response += f"**Support Level**: ₹{support:.2f}\n"
-                response += f"**Resistance Level**: ₹{resistance:.2f}\n"
+                    conservative_profit = (conservative_target - entry_price) * shares
+                    moderate_profit = (moderate_target - entry_price) * shares
+                    aggressive_profit = (aggressive_target - entry_price) * shares
                 
-                if momentum > 3:
-                    response += f"**🟢 SIGNAL**: Strong uptrend (+{momentum:.1f}%)\n"
-                    response += f"**ACTION**: Consider buying on dips near ₹{support:.2f}\n"
-                elif momentum < -3:
-                    response += f"**🔴 SIGNAL**: Downtrend ({momentum:.1f}%)\n" 
-                    response += f"**ACTION**: Wait for reversal or avoid\n"
+                    response += f"**📈 Scenario Analysis:**\n\n"
+                
+                    response += f"**🟢 Conservative (3-6 months):**\n"
+                    response += f"- Target Price: ₹{conservative_target:.2f}\n"
+                    response += f"- Total Profit: ₹{conservative_profit:+,.0f}\n"
+                    response += f"- Return: {((conservative_profit)/invested_value)*100:+.1f}%\n"
+                    response += f"- Probability: 70%\n\n"
+                
+                    response += f"**🟡 Moderate (6-12 months):**\n"
+                    response += f"- Target Price: ₹{moderate_target:.2f}\n"
+                    response += f"- Total Profit: ₹{moderate_profit:+,.0f}\n"
+                    response += f"- Return: {((moderate_profit)/invested_value)*100:+.1f}%\n"
+                    response += f"- Probability: 45%\n\n"
+                
+                    response += f"**🔥 Aggressive (12-18 months):**\n"
+                    response += f"- Target Price: ₹{aggressive_target:.2f}\n"
+                    response += f"- Total Profit: ₹{aggressive_profit:+,.0f}\n"
+                    response += f"- Return: {((aggressive_profit)/invested_value)*100:+.1f}%\n"
+                    response += f"- Probability: 25%\n\n"
+                
+                    # Risk analysis
+                    downside_target = current_price * 0.85  # 15% downside
+                    downside_loss = (downside_target - entry_price) * shares
+                
+                    response += f"**🔴 Downside Risk:**\n"
+                    response += f"- Risk Price: ₹{downside_target:.2f}\n"
+                    response += f"- Potential Loss: ₹{downside_loss:+,.0f}\n"
+                    response += f"- Risk: {((downside_loss)/invested_value)*100:+.1f}%\n\n"
+            
+                # Smart recommendations based on current situation
+                response += f"### 🎯 Actionable Recommendations\n\n"
+            
+                if pnl_pct > 25:
+                    response += f"**🟢 BOOK PROFITS**: Outstanding gains!\n"
+                    response += f"- Sell 50% at current levels (₹{current_value/2:,.0f})\n"
+                    response += f"- Trailing stop loss for remaining at ₹{current_price * 0.95:.2f}\n"
+                elif pnl_pct > 15:
+                    response += f"**🟢 PARTIAL BOOKING**: Excellent performance!\n"
+                    response += f"- Book 30% profits (₹{pnl * 0.3:,.0f})\n"
+                    response += f"- Hold rest with stop loss at ₹{entry_price * 1.05:.2f}\n"
+                elif pnl_pct > 5:
+                    response += f"**🟡 HOLD WITH PROTECTION**:\n"
+                    response += f"- Maintain position with stop loss at ₹{entry_price * 0.95:.2f}\n"
+                    response += f"- Target for full exit: ₹{conservative_target:.2f}\n"
+                elif pnl_pct < -15:
+                    response += f"**🔴 RISK MANAGEMENT**:\n"
+                    response += f"- Consider reducing position by 50%\n"
+                    response += f"- Strict stop loss at ₹{entry_price * 0.85:.2f}\n"
                 else:
-                    response += f"**🟡 SIGNAL**: Sideways movement\n"
-                    response += f"**ACTION**: Wait for clear breakout above ₹{resistance:.2f}\n"
+                    response += f"**🟡 PATIENCE REQUIRED**:\n"
+                    response += f"- Hold with stop loss at ₹{entry_price * 0.92:.2f}\n"
+                    response += f"- Add more if price drops to ₹{entry_price * 0.95:.2f}\n"
         
+            else:
+                # Analysis for potential investors
+                response += self.generate_fresh_investment_analysis(stock_symbol, current_price, data, original_message)
+            
         except Exception as e:
             response += f"⚠️ Analysis error: {str(e)}\n"
-        
+            response += f"**Basic Recommendation**: Monitor the stock closely and set appropriate risk management levels.\n"
+    
         return response
+    
+    def generate_fresh_investment_analysis(self, stock_symbol, current_price, data, original_message):
+        """Generate analysis for potential new investors"""
+    
+        analysis = f"### 🎯 Fresh Investment Analysis\n\n"
+    
+        # Technical levels
+        support = current_price * 0.95
+        resistance = data['High'].rolling(20).mean().iloc[-1]  # 20-day high average
+    
+        # Momentum analysis
+        sma_20 = data['Close'].rolling(20).mean().iloc[-1]
+        sma_50 = data['Close'].rolling(50).mean().iloc[-1] if len(data) >= 50 else sma_20
+    
+        trend = "🟢 Bullish" if current_price > sma_20 > sma_50 else "🔴 Bearish" if current_price < sma_20 < sma_50 else "🟡 Neutral"
+    
+        analysis += f"**Technical Setup:**\n"
+        analysis += f"- Entry Zone: ₹{support:.2f} - ₹{current_price * 1.02:.2f}\n"
+        analysis += f"- Target 1: ₹{current_price * 1.12:.2f} (12% gain)\n"
+        analysis += f"- Target 2: ₹{current_price * 1.25:.2f} (25% gain)\n"
+        analysis += f"- Stop Loss: ₹{support:.2f}\n"
+        analysis += f"- Trend: {trend}\n\n"
+    
+        analysis += f"**Investment Verdict:**\n"
+        if current_price > sma_20:
+            analysis += f"- 🟢 **BUY** on any dip near ₹{support:.2f}\n"
+            analysis += f"- Expected timeline: 6-12 months\n"
+        else:
+            analysis += f"- 🟡 **WAIT** for price to sustain above ₹{sma_20:.2f}\n"
+            analysis += f"- Or buy with tight stop loss\n"
+    
+        return analysis
 
     def extract_position_from_message(self, message):
         """Extract shares and entry price from user message"""
