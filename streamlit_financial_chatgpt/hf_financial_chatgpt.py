@@ -213,8 +213,8 @@ class CompleteFinancialAI:
         
             for period, days in timeframes.items():
                 if len(data) >= days:
-                past_price = data['Close'].iloc[-days]
-                returns[period] = ((current_price - past_price) / past_price) * 100
+                    past_price = data['Close'].iloc[-days]
+                    returns[period] = ((current_price - past_price) / past_price) * 100
         
             # Current status
             response += f"**📈 Current Status**\n"
