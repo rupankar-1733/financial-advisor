@@ -1,4 +1,4 @@
-# streamlit_financial_chatgpt/hf_financial_chatgpt.py - HF API Version
+# streamlit_financial_chatgpt/hf_financial_chatgpt.py - Enhanced AI Financial ChatGPT
 import streamlit as st
 import requests
 import json
@@ -74,22 +74,15 @@ st.markdown("""
 
 class HFFinancialChatGPT:
     def __init__(self):
-        """Initialize HF Financial ChatGPT"""
+        """Initialize Enhanced Financial ChatGPT"""
         # Get HF token from secrets
         self.hf_token = st.secrets.get("HF_TOKEN", "demo")
-        
-        # HF API endpoints (FREE models)
-        self.hf_models = {
-            'chat': 'microsoft/DialoGPT-large',  # Free conversational model
-            'text': 'gpt2',  # Free text generation
-            'financial': 'microsoft/DialoGPT-medium'  # Alternative free model
-        }
         
         # Your trading systems
         self.zone_detector = WorkingZoneDetector
         self.data_fetcher = LiveDataFetcher()
         
-        # Financial knowledge to prevent hallucination
+        # Enhanced financial knowledge templates
         self.financial_templates = {
             'investment_advice': """
 **Investment Analysis for {stock_name}**
@@ -125,48 +118,40 @@ I can help you with:
 - "Analyze TCS for ₹50k investment"
 - "Should I buy RELIANCE for trading?"
 - "What's my risk for ₹1L portfolio?"
+- "Give me top 3 stocks to invest"
+- "Create a medium-term portfolio strategy"
 
 **Market Insight**: Focus on quality stocks with strong technical setups and proper risk management.
 """
         }
     
     def query_hf_model(self, prompt, max_retries=2):
-        """Query Hugging Face model with fallback"""
-        
-        # For financial queries, use structured responses instead of LLM
-        # This prevents hallucination and ensures accurate financial advice
+        """Query with structured responses (no hallucination)"""
         return self.generate_structured_response(prompt)
     
-    def generate_structured_response(self, user_message):
-        """Generate structured financial response"""
-        
-        # Analyze user query
-        analysis = self.analyze_user_query(user_message)
-        context = st.session_state.get('user_context', {})
-        
-        if analysis['intent'] == 'stock_analysis' and analysis['stocks']:
-            return self.generate_stock_analysis_response(analysis['stocks'][0], context)
-        elif analysis['intent'] == 'investment_advice':
-            return self.generate_investment_advice_response(analysis, context)
-        elif analysis['intent'] == 'trading_advice':
-            return self.generate_trading_advice_response(analysis, context)
-        elif analysis['intent'] == 'risk_management':
-            return self.generate_risk_management_response(context)
-        else:
-            return self.financial_templates['general_advice']
-    
     def analyze_user_query(self, message):
-        """Analyze user intent and extract information"""
+        """Enhanced query analysis with more patterns"""
         message_lower = message.lower()
         
         # Extract stocks
         stocks = []
-        for symbol in ['tcs', 'infy', 'reliance', 'hdfcbank', 'itc']:
+        for symbol in ['tcs', 'infy', 'infosys', 'reliance', 'hdfcbank', 'hdfc', 'itc', 'sbin', 'wipro', 'hcl']:
             if symbol in message_lower:
-                stocks.append(f"{symbol.upper()}.NS")
+                if symbol in ['infosys']:
+                    stocks.append("INFY.NS")
+                elif symbol in ['hdfc']:
+                    stocks.append("HDFCBANK.NS")  
+                else:
+                    stocks.append(f"{symbol.upper()}.NS")
         
-        # Determine intent
-        if any(word in message_lower for word in ['analyze', 'analysis', 'target']):
+        # Enhanced intent detection
+        if any(phrase in message_lower for phrase in ['top 3', 'top stocks', 'best stocks', 'recommend stocks', 'suggest stocks']):
+            intent = 'stock_recommendations'
+        elif any(phrase in message_lower for phrase in ['medium term', 'long term', 'investment horizon', 'hold for']):
+            intent = 'investment_horizon_advice'
+        elif any(word in message_lower for word in ['portfolio', 'diversify', 'allocation']):
+            intent = 'portfolio_advice'
+        elif any(word in message_lower for word in ['analyze', 'analysis', 'target']):
             intent = 'stock_analysis'
         elif any(word in message_lower for word in ['buy', 'invest', 'should i']):
             intent = 'investment_advice'
@@ -174,6 +159,8 @@ I can help you with:
             intent = 'trading_advice'
         elif any(word in message_lower for word in ['risk', 'stop loss', 'position size']):
             intent = 'risk_management'
+        elif any(word in message_lower for word in ['market', 'sentiment', 'today', 'current']):
+            intent = 'market_overview'
         else:
             intent = 'general'
         
@@ -182,6 +169,188 @@ I can help you with:
             'stocks': stocks,
             'message': message
         }
+    
+    def generate_structured_response(self, user_message):
+        """Enhanced response generation"""
+        analysis = self.analyze_user_query(user_message)
+        context = st.session_state.get('user_context', {})
+        
+        # Route to appropriate response generator
+        if analysis['intent'] == 'stock_recommendations':
+            return self.generate_stock_recommendations_response(context)
+        elif analysis['intent'] == 'investment_horizon_advice':
+            return self.generate_horizon_advice_response(analysis, context)
+        elif analysis['intent'] == 'portfolio_advice':
+            return self.generate_portfolio_advice_response(context)
+        elif analysis['intent'] == 'stock_analysis' and analysis['stocks']:
+            return self.generate_stock_analysis_response(analysis['stocks'][0], context)
+        elif analysis['intent'] == 'investment_advice':
+            return self.generate_investment_advice_response(analysis, context)
+        elif analysis['intent'] == 'trading_advice':
+            return self.generate_trading_advice_response(analysis, context)
+        elif analysis['intent'] == 'risk_management':
+            return self.generate_risk_management_response(context)
+        elif analysis['intent'] == 'market_overview':
+            return self.generate_market_overview_response()
+        else:
+            return self.financial_templates['general_advice']
+    
+    def generate_stock_recommendations_response(self, context):
+        """Generate top 3 stock recommendations"""
+        capital = context.get('capital', 50000)
+        risk_level = context.get('risk_tolerance', 'moderate')
+        
+        response = f"## 🎯 Top 3 Stock Recommendations (₹{capital:,})\n\n"
+        response += f"**Risk Profile**: {risk_level.title()} • **Investment Horizon**: Medium-term\n\n"
+        
+        # Analyze top stocks
+        recommended_stocks = ['TCS.NS', 'INFY.NS', 'RELIANCE.NS']
+        stock_analyses = {}
+        
+        for stock in recommended_stocks:
+            try:
+                detector = self.zone_detector(stock, capital)
+                zones_data = detector.get_price_zones()
+                if zones_data:
+                    stock_analyses[stock] = {
+                        'current_price': zones_data['current_price'],
+                        'support': zones_data['support_zones'][0] if zones_data['support_zones'] else None,
+                        'resistance': zones_data['resistance_zones'][0] if zones_data['resistance_zones'] else None
+                    }
+            except:
+                continue
+        
+        # Generate recommendations
+        rank = 1
+        for stock in recommended_stocks:
+            if stock in stock_analyses:
+                stock_name = stock.replace('.NS', '')
+                data = stock_analyses[stock]
+                
+                response += f"### {rank}. **{stock_name}** - ₹{data['current_price']:.2f}\n\n"
+                
+                # Allocation based on risk level
+                if risk_level == 'conservative':
+                    allocation = min(capital * 0.25, 15000)
+                elif risk_level == 'aggressive':  
+                    allocation = min(capital * 0.35, 30000)
+                else:
+                    allocation = min(capital * 0.3, 25000)
+                
+                shares = int(allocation / data['current_price'])
+                
+                response += f"**Recommended Investment**: ₹{allocation:,} ({shares} shares)\n\n"
+                
+                if data['support']:
+                    response += f"**Entry Zone**: ₹{data['support']['price']:.0f} (support level)\n"
+                
+                if data['resistance']:
+                    upside = ((data['resistance']['price'] - data['current_price']) / data['current_price']) * 100
+                    response += f"**Target**: ₹{data['resistance']['price']:.0f} ({upside:.1f}% upside)\n"
+                
+                # Add stock context
+                stock_context = {
+                    'TCS': 'Leading IT services company with stable growth and strong fundamentals',
+                    'INFY': 'Global IT giant with consistent performance and good dividend yield', 
+                    'RELIANCE': 'Diversified conglomerate with oil, retail, and telecom businesses'
+                }
+                
+                if stock_name in stock_context:
+                    response += f"**Why {stock_name}**: {stock_context[stock_name]}\n\n"
+                
+                rank += 1
+        
+        # Portfolio summary
+        response += f"### 💰 Portfolio Summary\n\n"
+        response += f"**Total Allocation**: ₹{min(capital * 0.9, 70000):,.0f} (90% of capital)\n"
+        response += f"**Cash Reserve**: ₹{capital - min(capital * 0.9, 70000):,.0f} (10% for opportunities)\n"
+        response += f"**Diversification**: Across IT services and diversified sectors\n\n"
+        
+        response += f"**Investment Strategy**: Dollar-cost average over 2-4 weeks for better entry prices."
+        
+        return response
+    
+    def generate_horizon_advice_response(self, analysis, context):
+        """Generate investment horizon specific advice"""
+        capital = context.get('capital', 50000)
+        risk_level = context.get('risk_tolerance', 'moderate')
+        
+        response = f"## ⏰ Medium-Term Investment Strategy (₹{capital:,})\n\n"
+        response += f"**Time Horizon**: 6-24 months • **Risk Level**: {risk_level.title()}\n\n"
+        
+        response += f"### 📊 Medium-Term Approach\n\n"
+        response += f"**Allocation Strategy**:\n"
+        response += f"- **60%** Quality large-caps (TCS, INFY, HDFCBANK)\n"
+        response += f"- **25%** Growth mid-caps with strong fundamentals\n"
+        response += f"- **15%** Cash for tactical opportunities\n\n"
+        
+        response += f"**Key Focus Areas**:\n"
+        response += f"- **Technology Sector**: Benefiting from digital transformation\n"
+        response += f"- **Banking Sector**: NPA cycle recovery and credit growth\n"
+        response += f"- **Quality Consumption**: Stable demand patterns\n\n"
+        
+        response += f"**Entry Strategy**:\n"
+        response += f"- Use systematic investment over 4-6 weeks\n"
+        response += f"- Buy on market corrections (3-5% dips)\n"
+        response += f"- Focus on stocks trading near support levels\n\n"
+        
+        response += f"**Exit Strategy**:\n"
+        response += f"- Book partial profits at 15-20% gains\n"
+        response += f"- Use trailing stop losses for winners\n"
+        response += f"- Review portfolio allocation quarterly\n"
+        
+        return response
+    
+    def generate_portfolio_advice_response(self, context):
+        """Generate portfolio allocation advice"""
+        capital = context.get('capital', 50000)
+        risk_level = context.get('risk_tolerance', 'moderate')
+        
+        response = f"## 📊 Portfolio Allocation Strategy (₹{capital:,})\n\n"
+        
+        if risk_level == 'conservative':
+            response += f"### 🛡️ Conservative Portfolio\n\n"
+            response += f"**Equity Allocation** (70%): ₹{capital * 0.7:,.0f}\n"
+            response += f"- Large-cap IT: 30% (TCS, INFY)\n"
+            response += f"- Banking: 25% (HDFCBANK, KOTAKBANK)\n" 
+            response += f"- FMCG: 15% (HINDUNILVR, ITC)\n\n"
+            
+            response += f"**Debt/Safe Assets** (20%): ₹{capital * 0.2:,.0f}\n"
+            response += f"- Index funds/ETFs\n"
+            response += f"- High-grade corporate bonds\n\n"
+            
+            response += f"**Cash Reserve** (10%): ₹{capital * 0.1:,.0f}\n"
+            
+        elif risk_level == 'aggressive':
+            response += f"### 🚀 Aggressive Portfolio\n\n"
+            response += f"**Growth Stocks** (60%): ₹{capital * 0.6:,.0f}\n"
+            response += f"- IT & Technology: 35% (TCS, INFY, HCL)\n"
+            response += f"- New Economy: 25% (RELIANCE, BHARTIAIRTEL)\n\n"
+            
+            response += f"**Mid-cap Opportunities** (25%): ₹{capital * 0.25:,.0f}\n"
+            response += f"- Emerging leaders in growing sectors\n\n"
+            
+            response += f"**Cash for Opportunities** (15%): ₹{capital * 0.15:,.0f}\n"
+            
+        else:
+            response += f"### ⚖️ Balanced Portfolio\n\n"
+            response += f"**Core Holdings** (50%): ₹{capital * 0.5:,.0f}\n"
+            response += f"- IT Services: 25% (TCS, INFY)\n"
+            response += f"- Banking: 25% (HDFCBANK, SBIN)\n\n"
+            
+            response += f"**Growth Bets** (30%): ₹{capital * 0.3:,.0f}\n"
+            response += f"- Diversified conglomerates: 20% (RELIANCE)\n"
+            response += f"- Consumption themes: 10% (HINDUNILVR)\n\n"
+            
+            response += f"**Tactical Cash** (20%): ₹{capital * 0.2:,.0f}\n"
+        
+        response += f"\n### 📈 Rebalancing Strategy\n\n"
+        response += f"- **Monthly Review**: Track allocation drift\n"
+        response += f"- **Quarterly Rebalance**: Restore target allocations\n"
+        response += f"- **Annual Review**: Update strategy based on market conditions\n"
+        response += f"- **Profit Booking**: Take profits when stocks exceed 25% allocation\n"
+        
+        return response
     
     def generate_stock_analysis_response(self, stock, context):
         """Generate detailed stock analysis"""
@@ -328,6 +497,39 @@ I can help you with:
         response += "5. Keep detailed trading journal\n"
         
         return response
+    
+    def generate_market_overview_response(self):
+        """Enhanced market overview"""
+        response = f"## 🌍 Current Market Overview\n\n"
+        
+        try:
+            status = self.data_fetcher.get_current_market_status()
+            response += f"**Market Status**: {'🟢 Markets Open' if status['is_open'] else '🔴 Markets Closed'}\n"
+            response += f"**Current Time**: {status['current_time']}\n\n"
+        except:
+            response += f"**Market Status**: Analysis in progress\n\n"
+        
+        response += f"### 📊 Current Market Themes\n\n"
+        response += f"**🎯 Positive Drivers**:\n"
+        response += f"- Strong corporate earnings growth\n"
+        response += f"- Domestic consumption recovery\n"
+        response += f"- Government infrastructure spending\n"
+        response += f"- Technology sector transformation\n\n"
+        
+        response += f"**⚠️ Risk Factors**:\n"
+        response += f"- Global economic uncertainty\n"
+        response += f"- Interest rate environment\n"
+        response += f"- Geopolitical tensions\n"
+        response += f"- Currency volatility\n\n"
+        
+        response += f"### 🎯 Investment Strategy\n\n"
+        response += f"**Recommended Approach**:\n"
+        response += f"- Focus on quality over quantity\n"
+        response += f"- Diversify across sectors and market caps\n"
+        response += f"- Use market corrections as buying opportunities\n"
+        response += f"- Maintain adequate cash reserves\n"
+        
+        return response
 
 def init_session_state():
     """Initialize session state"""
@@ -344,10 +546,14 @@ I'm your AI financial advisor powered by advanced market analysis tools and real
 - 💰 **Investment Strategies** tailored to your profile  
 - ⚡ **Trading Setups** with precise entry/exit points
 - 🛡️ **Risk Management** and position sizing
+- 🎯 **Top Stock Recommendations** for any budget
+- 📊 **Portfolio Allocation** strategies
 
 **Try asking:**
+- "Give me top 3 stocks to invest"
 - "Analyze TCS for ₹50k investment"
 - "Should I buy RELIANCE for trading?"
+- "Create a medium-term portfolio strategy"
 - "What's my risk management strategy?"
 
 What would you like to know about investing or trading today? 💰"""
@@ -397,13 +603,16 @@ def setup_sidebar():
     st.sidebar.markdown("---")
     st.sidebar.markdown("⚡ **Quick Questions**")
     
-    if st.sidebar.button("📊 Market Analysis"):
-        return "Give me current market analysis and top stock picks"
+    if st.sidebar.button("🎯 Top 3 Stocks"):
+        return "Give me top 3 stocks to invest for medium term"
     
-    if st.sidebar.button("🎯 Investment Strategy"):
-        return f"Create investment strategy for {risk_tolerance.lower()} investor with ₹{capital:,}"
+    if st.sidebar.button("📊 Portfolio Strategy"):
+        return f"Create a portfolio allocation strategy for {risk_tolerance.lower()} investor with ₹{capital:,}"
     
-    if st.sidebar.button("🛡️ Risk Check"):
+    if st.sidebar.button("🌍 Market Overview"):
+        return "What's the current market overview and investment themes?"
+    
+    if st.sidebar.button("🛡️ Risk Analysis"):
         return f"Analyze risk management for ₹{capital:,} portfolio"
     
     if st.sidebar.button("🗑️ Clear Chat"):
@@ -421,7 +630,7 @@ def main():
     <div class="header">
         <h1>🤖 AI Financial ChatGPT</h1>
         <p>Powered by Advanced Market Analysis & Real-time Data</p>
-        <small>Free Hugging Face API + Your Custom Trading Algorithms</small>
+        <small>Enhanced AI with Comprehensive Financial Intelligence</small>
     </div>
     """, unsafe_allow_html=True)
     
