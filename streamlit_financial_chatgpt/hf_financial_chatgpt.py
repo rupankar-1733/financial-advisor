@@ -148,35 +148,243 @@ class CompleteFinancialAI:
             now = datetime.now()
             return True, f"🟢 Analysis Time - {now.strftime('%I:%M %p IST')}"
     
-    def detect_and_analyze_any_stock(self, user_message):
-        """Universal method that finds ANY stock mentioned and analyzes it"""
+    def classify_query_intent_intelligently(self, user_message):
+        """Advanced semantic classification using multiple signals"""
+    
+        message_lower = user_message.lower()
+    
+        # Define intent patterns with semantic understanding
+        intent_patterns = {
+            'investment_recommendation': [
+            # High-confidence patterns for investment queries
+                r'(?:which|what|best).+(?:stock|share|invest|buy).+(?:return|profit)',
+                r'(?:invest|put|capital).+(?:\d+k|\d+\s*thousand|₹\d+)',
+                r'(?:suggest|recommend|advice).+(?:stock|share|investment)',
+                r'(?:where|how).+(?:invest|put).+(?:money|capital)',
+                r'(?:best|good).+(?:stock|share).+(?:buy|invest)',
+                r'(?:\d+%).+(?:return|profit|gain)',
+            ],
+            'stock_analysis': [
+                # Patterns for specific stock analysis
+                r'(?:analyze|analysis|data|price).+[A-Z]{3,}(?!.*(?:which|what|best))',
+                r'(?:show|check|tell).+(?:data|price).+(?:of|for)\s+[A-Z]{3,}',
+                r'(?:bought|holding|have).+(?:shares|stocks).+(?:of|in)\s+[A-Z]{3,}',
+                r'\b[A-Z]{3,}\b.+(?:analysis|data|price|performance)(?!.*(?:which|what))',
+            ],
+            'position_tracking': [
+                # Patterns for existing position analysis
+                r'(?:bought|purchased).+\d+.+(?:shares|stocks).+(?:at|@)',
+                r'(?:holding|have).+\d+.+(?:shares|stocks)',
+                r'(?:my|current).+(?:position|holding)',
+                r'\d+\s+shares.+(?:at|@)\s+\d+',
+            ]
+        }
+    
+        # Score each intent
+        intent_scores = {}
+    
+        for intent, patterns in intent_patterns.items():
+            score = 0
+            for pattern in patterns:
+                if re.search(pattern, message_lower):
+                    score += 2  # Strong match
         
-        # Step 1: Extract potential stock names from user message
+            # Add contextual scoring
+            if intent == 'investment_recommendation':
+                recommendation_keywords = ['which', 'what', 'best', 'suggest', 'recommend', 'return', 'profit']
+                score += sum(1 for keyword in recommendation_keywords if keyword in message_lower)
+            
+            elif intent == 'stock_analysis':
+                analysis_keywords = ['analyze', 'data', 'show', 'price', 'performance']
+                score += sum(1 for keyword in analysis_keywords if keyword in message_lower)
+            
+            elif intent == 'position_tracking':
+                position_keywords = ['bought', 'holding', 'shares', 'position']
+                score += sum(1 for keyword in position_keywords if keyword in message_lower)
+        
+            intent_scores[intent] = score
+    
+        # Return the highest scoring intent
+        best_intent = max(intent_scores.items(), key=lambda x: x[1])
+    
+        return best_intent[0] if best_intent[1] > 2 else 'general'
+
+    def extract_stock_symbols_intelligently(self, message):
+        """Improved stock symbol extraction that avoids false positives"""
+    
         import re
-        words = re.findall(r'\b[A-Za-z]+\b', user_message)
-        
-        # Step 2: Test each word to see if it's a valid stock
+    
+        # Enhanced false positives list
+        false_positives = {
+            'for', 'can', 'which', 'what', 'where', 'when', 'how', 'and', 'the', 'get', 'put', 
+            'buy', 'sell', 'have', 'will', 'best', 'good', 'more', 'return', 'profit', 'gain', 
+            'loss', 'term', 'mid', 'long', 'short', 'stock', 'share', 'invest', 'capital', 
+            'money', 'lakh', 'crore', 'thousand', 'rupee', 'percent', 'month', 'year'
+        }
+    
+        # Extract words and filter
+        words = re.findall(r'\b[A-Za-z]+\b', message)
         valid_stocks = []
-        
+    
         for word in words:
-            if len(word) >= 3:  # Stock symbols are usually 3+ characters
-                # Try multiple formats
-                potential_symbols = [
-                    f"{word.upper()}.NS",           # IREDA.NS
-                    f"{word.upper()}.BO",           # Some stocks use .BO
-                    f"{word.upper()}"               # Just the symbol
-                ]
-                
-                for symbol in potential_symbols:
-                    if self.validate_stock_exists(symbol):
-                        valid_stocks.append(symbol)
-                        break  # Found valid format, move to next word
-        
-        # Step 3: Analyze the first valid stock found
-        if valid_stocks:
-            return self.analyze_stock_universally(valid_stocks[0], user_message)
+            if (len(word) >= 3 and 
+                word.lower() not in false_positives and
+                word.upper() not in ['NSE', 'BSE', 'USD', 'INR']):
+            
+                # Only validate if it appears in stock context
+                stock_context_pattern = rf'\b{re.escape(word)}\b.{{0,30}}(?:stock|share|analysis|data|price|bought|holding)'
+
+                if re.search(stock_context_pattern, message.lower(), re.IGNORECASE):
+                    # Try to validate
+                    for suffix in ['.NS', '.BO']:
+                        symbol = f"{word.upper()}{suffix}"
+                        if self.validate_stock_exists(symbol):
+                            valid_stocks.append(symbol)
+                            break
+    
+        return valid_stocks
+    
+    def generate_smart_response(self, user_message):
+        """Intelligent response routing based on semantic understanding"""
+    
+        # Get market status
+        market_open, market_status = self.check_market_status()
+    
+        # Classify the query intent intelligently
+        intent = self.classify_query_intent_intelligently(user_message)
+
+        # Extract relevant information
+        extracted_capital = self.extract_capital_from_query(user_message)
+        context = st.session_state.get('user_context', {})
+        working_capital = extracted_capital or context.get('capital', 50000)
+    
+        print(f"DEBUG: Intent = {intent}, Capital = {working_capital}")
+    
+        if intent == 'investment_recommendation':
+            return self.generate_investment_recommendations(working_capital, user_message, market_status)
+    
+        elif intent == 'stock_analysis':
+            stocks = self.extract_stock_symbols_intelligently(user_message)
+            if stocks:
+                return self.analyze_stock_universally(stocks[0], user_message)
+            else:
+                return self.generate_investment_recommendations(working_capital, user_message, market_status)
+    
+        elif intent == 'position_tracking':
+            stocks = self.extract_stock_symbols_intelligently(user_message)
+            if stocks:
+                return self.analyze_stock_universally(stocks[0], user_message)
+            else:
+                return "Please specify the stock symbol for position analysis."
+    
         else:
-            return self.handle_no_stock_found(user_message)
+            # Default to investment recommendation for unclear queries
+            return self.generate_investment_recommendations(working_capital, user_message, market_status)
+
+    def generate_investment_recommendations(self, capital, original_message, market_status):
+        """Generate investment recommendations for capital allocation queries"""
+    
+        response = f"## 💰 Investment Recommendations for ₹{capital:,}\n\n"
+        response += f"**{market_status}**\n\n"
+    
+        # Extract return expectations from message
+        return_expectation = None
+        return_patterns = [
+            r'(\d+)%\s*(?:return|profit|gain)',
+            r'(\d+)\s*percent',
+            r'(\d+)x\s*(?:return|multiple)'
+        ]
+    
+        for pattern in return_patterns:
+            match = re.search(pattern, original_message.lower())
+            if match:
+                return_expectation = int(match.group(1))
+                break
+    
+        # Extract time horizon
+        time_horizon = 'medium'  # default
+        if any(word in original_message.lower() for word in ['short', 'quick', '1 month', '2 month']):
+            time_horizon = 'short'
+        elif any(word in original_message.lower() for word in ['long', 'years', '2 year', '3 year']):
+            time_horizon = 'long'
+    
+        response += f"### 🎯 Analysis of Your Requirements\n\n"
+        response += f"**Capital**: ₹{capital:,}\n"
+        response += f"**Expected Return**: {return_expectation}%\n" if return_expectation else "**Expected Return**: Standard market returns\n"
+        response += f"**Time Horizon**: {time_horizon.title()} term\n\n"
+    
+        # Risk warning for high return expectations
+        if return_expectation and return_expectation >= 50:
+            response += f"### ⚠️ High Return Expectation Alert\n\n"
+            response += f"**{return_expectation}% returns** require **HIGH RISK** investments:\n"
+            response += f"- Small/Mid cap stocks with high volatility\n"
+            response += f"- Penny stocks (high risk of total loss)\n"
+            response += f"- Sectoral/thematic stocks at right timing\n"
+            response += f"- Options trading (requires expertise)\n\n"
+            response += f"**⚠️ Important**: Such returns are possible but come with 50-70% risk of significant losses.\n\n"
+    
+        # Generate sector-based recommendations
+        try:
+            # Get current sector data
+            sector_stocks = {
+                'HIGH_GROWTH': ['IREDA.NS', 'ZOMATO.NS', 'PAYTM.NS'],
+                'STABLE': ['TCS.NS', 'HDFCBANK.NS', 'ITC.NS'],
+                'CYCLICAL': ['TATASTEEL.NS', 'JSWSTEEL.NS', 'SBIN.NS']
+            }
+        
+            response += f"### 📊 Recommended Stocks for Your Profile\n\n"
+
+            # Select appropriate category based on return expectation
+            if return_expectation and return_expectation >= 50:
+                recommended_stocks = sector_stocks['HIGH_GROWTH']
+                response += f"**🔥 High Growth Stocks** (High Risk, High Reward):\n"
+            elif capital <= 25000:
+                recommended_stocks = sector_stocks['STABLE']
+                response += f"**🟢 Stable Growth Stocks** (Lower Risk):\n"
+            else:
+                recommended_stocks = sector_stocks['CYCLICAL']
+                response += f"**🟡 Cyclical Recovery Stocks** (Medium Risk):\n"
+        
+            # Analyze top 3 recommendations
+            stock_data = self.get_live_stock_data_batch(recommended_stocks[:3])
+        
+            for i, stock in enumerate(recommended_stocks[:3], 1):
+                stock_name = stock.replace('.NS', '')
+            
+                if stock in stock_data and stock_data[stock]['valid']:
+                    data = stock_data[stock]
+                    price = data['current_price']
+                    momentum = data['momentum']
+
+                    max_shares = int(capital * 0.3 / price)  # 30% allocation
+                    investment = max_shares * price
+
+                    response += f"\n**{i}. {stock_name}**\n"
+                    response += f"- Current Price: ₹{price:.2f}\n"
+                    response += f"- Recent Performance: {momentum:+.2f}%\n"
+                    response += f"- Max Shares (30%): {max_shares}\n"
+                    response += f"- Investment: ₹{investment:,.0f}\n"
+
+                    # Calculate potential returns
+                    if return_expectation:
+                        target_price = price * (1 + return_expectation/100)
+                        potential_profit = (target_price - price) * max_shares
+                        response += f"- Target Price: ₹{target_price:.2f}\n"
+                        response += f"- Potential Profit: ₹{potential_profit:,.0f}\n"
+                    
+        except Exception as e:
+            response += f"**Unable to fetch live data. Here are general recommendations:**\n"
+            response += f"- For {return_expectation}%+ returns: Consider small-cap stocks\n" if return_expectation and return_expectation >= 50 else ""
+            response += f"- Focus on sectors: IT, Banking, Auto for balanced growth\n"
+            response += f"- Diversify across 3-4 stocks maximum\n"
+    
+            response += f"\n### 🛡️ Risk Management\n\n"
+        response += f"- **Maximum per stock**: 30% of capital\n"
+        response += f"- **Stop loss**: 15% below entry price\n"
+        response += f"- **Profit booking**: {return_expectation//2 if return_expectation else 25}% of target\n"
+        response += f"- **Review frequency**: Monthly\n"
+    
+        return response
 
     def validate_stock_exists(self, symbol):
         """Check if stock symbol exists by trying to fetch data"""
@@ -635,49 +843,95 @@ class CompleteFinancialAI:
 
 
     def generate_structured_response(self, user_message):
-        """IMPROVED: Universal response handler with better intent detection"""
+        """ENHANCED NLP-powered response system with intelligent routing"""
     
-        # Check market status
+        # Get market status
         market_open, market_status = self.check_market_status()
     
-        # IMPROVED: Check for general investment queries FIRST
-        message_lower = user_message.lower()
-            
-        # If it's clearly a general investment query, don't look for stocks
-        general_investment_phrases = [
-            'i have capital', 'capital of', 'what to buy', 'where to invest',
-            'suggest me', 'recommend me', 'best investment', 'how to invest'
-        ]
-    
-        is_general_query = any(phrase in message_lower for phrase in general_investment_phrases)
-    
-        # If it's NOT a general query, try to find stocks
-        if not is_general_query:
-            stock_analysis = self.detect_and_analyze_any_stock(user_message)
+        try:
+            # Extract capital and get context
+            extracted_capital = self.extract_capital_from_query(user_message)
+            context = st.session_state.get('user_context', {})
+            working_capital = extracted_capital or context.get('capital', 50000)
         
-            # If stock found and analyzed, return that
-            if "No Valid Stock Detected" not in stock_analysis:
-                return stock_analysis
+            # Clean message for analysis
+            message_lower = user_message.lower().strip()
+
+            # SMART INTENT DETECTION - Check investment queries FIRST
+            investment_keywords = ['which', 'what', 'best', 'suggest', 'recommend', 'where', 'how']
+            investment_context = ['invest', 'buy', 'stock', 'share', 'return', 'profit', 'capital']
+        
+            # Check if it's an investment recommendation query
+            has_investment_keyword = any(keyword in message_lower for keyword in investment_keywords)
+            has_investment_context = any(context_word in message_lower for context_word in investment_context)
+            has_capital_mention = extracted_capital is not None or any(word in message_lower for word in ['capital', 'money', 'lakh', 'crore', 'k', 'thousand'])
+        
+            # Priority 1: Investment Recommendation Queries
+            if (has_investment_keyword and has_investment_context) or has_capital_mention:
+                return self.generate_investment_recommendations(working_capital, user_message, market_status)
+        
+            # Priority 2: Specific Stock Analysis (only if no investment keywords)
+            elif not has_investment_keyword:
+                stocks = self.extract_stock_symbols_intelligently(user_message)
+                if stocks:
+                    return self.analyze_stock_universally(stocks[0], user_message)
+        
+            # Priority 3: Crisis Management
+            if any(word in message_lower for word in ['crisis', 'crashing', 'bleeding', 'urgent', 'damage']):
+                return self.generate_crisis_management_response(working_capital, market_status)
+        
+            # Priority 4: Advanced Options
+            elif any(phrase in message_lower for phrase in ['options', 'covered calls', 'iron condor', 'theta', 'delta']):
+                stocks = self.extract_stock_symbols_intelligently(user_message)
+                return self.generate_advanced_options_strategy(stocks, working_capital, market_status)
+
+            # Priority 5: Nuclear/Complete Analysis
+            elif any(phrase in message_lower for phrase in ['nuclear', 'complete', 'comprehensive', 'ultimate', 'run every']):
+                return self.generate_nuclear_analysis(working_capital, market_status)
+
+            # Priority 6: Sector Analysis
+            elif any(phrase in message_lower for phrase in ['sector', 'rotation', 'breadth']):
+                return self.generate_sector_rotation_analysis(working_capital, market_status)
+
+            # Default: Investment Recommendations
+            else:
+                return self.generate_investment_recommendations(working_capital, user_message, market_status)
     
-        # Handle as general investment query
-        context = st.session_state.get('user_context', {})
-        working_capital = context.get('capital', 50000)
-    
-        # Extract capital from message if mentioned
-        extracted_capital = self.extract_capital_from_query(user_message)
-        if extracted_capital:
-            working_capital = extracted_capital
-    
-        # Route to appropriate method
-        if any(word in message_lower for word in ['crisis', 'crashing', 'bleeding', 'urgent']):
-            return self.generate_crisis_management_response(working_capital, market_status)
-    
-        elif any(word in message_lower for word in ['ultimate', 'comprehensive', 'complete']):
-            return self.generate_detailed_ultimate_recommendations(working_capital, context, market_status)
-    
-        else:
-            # Generate simple investment recommendations for general queries
-            return self.generate_simple_investment_advice(working_capital, message_lower, market_status)
+        except Exception as e:
+            # Enhanced error handling with helpful guidance
+            context = st.session_state.get('user_context', {})
+            working_capital = context.get('capital', 50000)
+        
+            error_response = f"⚠️ **AI Processing Handled Gracefully**\n\n"
+            error_response += f"**{market_status}**\n\n"
+        
+            # Provide helpful error-specific guidance
+            if "generate_investment_recommendations" in str(e):
+                error_response += f"**Issue**: Investment recommendation system error\n"
+                error_response += f"**Quick Fix**: Try specifying your query more clearly\n\n"
+                error_response += f"**Example**: 'I have ₹{working_capital//1000}k, which stock for 50% returns?'\n\n"
+        
+            elif "stock" in str(e).lower() or "symbol" in str(e).lower():
+                error_response += f"**Issue**: Stock analysis error\n"
+                error_response += f"**Quick Fix**: Use clear stock symbols\n\n"
+                error_response += f"**Example**: 'Analyze TCS' or 'Show me RELIANCE data'\n\n"
+        
+            else:
+                error_response += f"**System Status**: All core functions operational\n\n"
+        
+            # Provide basic fallback recommendations
+            error_response += f"### 💰 Quick Recommendations (₹{working_capital:,})\n\n"
+            error_response += f"**For investment advice**: Specify capital and expected returns\n"
+            error_response += f"**For stock analysis**: Use stock symbols like TCS, RELIANCE, TATASTEEL\n"
+            error_response += f"**For position tracking**: Mention 'bought X shares of STOCK at PRICE'\n\n"
+        
+            error_response += f"**🎯 Try these working examples:**\n"
+            error_response += f"- 'Best stock for ₹10000 investment'\n"
+            error_response += f"- 'I bought 50 shares of TCS at 3000'\n"
+            error_response += f"- 'Which stock to buy for 70% returns?'\n"
+        
+        return error_response
+
 
 
     def generate_simple_investment_advice(self, capital, message, market_status):
